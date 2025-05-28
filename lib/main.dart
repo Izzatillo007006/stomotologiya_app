@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
+import 'package:stomotologiya_app/screens/Lock_Screen.dart';
 import 'package:stomotologiya_app/screens/home.dart';
 import 'screens/patients/add_patient_screen.dart';
 import 'models/patient.dart';
@@ -10,7 +11,7 @@ import 'models/patient.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-
+  await Hive.openBox('authBox');
   // PatientAdapter ni ro'yxatdan o'tkazish
   Hive.registerAdapter(PatientAdapter());
   // await migrateDatabase();
@@ -24,8 +25,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    var box = Hive.box("authBox");
+
+    bool isAuthenticated = box.get('isAuthenticated', defaultValue: false);
+
     return MaterialApp(
-      home: HomeScreen(),
+      home: isAuthenticated ? HomeScreen() : LockScreen(),
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: Colors.blue),
     );
