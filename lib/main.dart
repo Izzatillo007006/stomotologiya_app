@@ -1,20 +1,34 @@
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
-import 'package:stomotologiya_app/screens/Lock_Screen.dart';
+import 'package:stomotologiya_app/login/login.dart';
 import 'package:stomotologiya_app/screens/home.dart';
+import 'firebase_options.dart';
 import 'screens/patients/add_patient_screen.dart';
 import 'models/patient.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Firebase ni ishga tushirish
+  await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform
+  );
+
+  // Hive ni ishga tushirish
   await Hive.initFlutter();
   await Hive.openBox('authBox');
+
   // PatientAdapter ni ro'yxatdan o'tkazish
   Hive.registerAdapter(PatientAdapter());
+
+  // Database migratsiyasini bajarish (ixtiyoriy)
   // await migrateDatabase();
+
   await Hive.openBox<Patient>('patients');
 
   runApp(const MyApp());
@@ -25,18 +39,73 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var box = Hive.box("authBox");
-
-    bool isAuthenticated = box.get('isAuthenticated', defaultValue: false);
-
     return MaterialApp(
-      home: isAuthenticated ? HomeScreen() : LockScreen(),
+      title: 'Stomatologiya App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.blue),
+      theme: ThemeData(
+        colorSchemeSeed: Colors.blue,
+        useMaterial3: true,
+      ),
+      // Firebase Auth state ni real-time kuzatish
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // Loading holatini ko'rsatish
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Yuklanmoqda...'),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // Agar foydalanuvchi tizimga kirgan bo'lsa
+          if (snapshot.hasData && snapshot.data != null) {
+            // Hive ga ham saqlash (offline ishlash uchun)
+            _saveAuthStateToHive(true, snapshot.data!);
+            return HomeScreen();
+          } else {
+            // Foydalanuvchi tizimga kirmagan
+            // Hive dan auth state ni tozalash
+            _saveAuthStateToHive(false, null);
+            return LoginScreen();
+          }
+        },
+      ),
+      // Navigation routes
+      routes: {
+        '/home': (context) => HomeScreen(),
+        '/login': (context) => LoginScreen(),
+      },
     );
+  }
+
+  // Auth state ni Hive ga saqlash funksiyasi
+  void _saveAuthStateToHive(bool isAuthenticated, User? user) {
+    final box = Hive.box('authBox');
+
+    if (isAuthenticated && user != null) {
+      box.put('isAuthenticated', true);
+      box.put('userEmail', user.email ?? '');
+      box.put('userId', user.uid);
+      box.put('emailVerified', user.emailVerified);
+    } else {
+      box.put('isAuthenticated', false);
+      box.delete('userEmail');
+      box.delete('userId');
+      box.delete('emailVerified');
+    }
   }
 }
 
+// Database migratsiya funksiyasi (o'zgarishsiz)
 Future<void> migrateDatabase() async {
   try {
     print('Starting database migration check...');
